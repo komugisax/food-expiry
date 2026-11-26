@@ -2,6 +2,68 @@ let editingItemId = null;
 
 let candidateMap = Object.create(null);
 
+const STORAGE_OPTIONS = [
+  ['冷蔵', '🧃'], ['冷凍', '🧊'], ['常温', '🌡️']
+];
+
+function storageChoices_(name, selected = '') {
+  return `<fieldset class="storage-choices">
+    <legend>保管場所</legend>
+    <div class="storage-choices__options">
+      ${STORAGE_OPTIONS.map(([value, icon]) => `
+        <label class="storage-choices__option">
+          <input type="radio" name="${name}" value="${value}" ${value === selected ? 'checked' : ''}>
+          <span aria-hidden="true">${icon}</span><span>${value}</span>
+        </label>`).join('')}
+    </div>
+  </fieldset>`;
+}
+
+function selectInputStorage_(value) {
+  document.querySelectorAll('#storage input[type="radio"]').forEach(radio => {
+    radio.checked = radio.value === value;
+  });
+}
+
+function updateStockTabDots_(items, now = new Date()) {
+  const today = localDay(now);
+  const nextDay = new Date(now);
+  nextDay.setDate(nextDay.getDate() + 1);
+  const tomorrow = localDay(nextDay);
+  const dueTypes = new Set(items
+    .filter(item => item.expiryDate === today || item.expiryDate === tomorrow)
+    .map(item => item.expiryType));
+
+  const button = document.querySelector('[data-tab="tab-stock"]');
+  const labels = ['在庫'];
+  for (const [type, dot] of [['消費', 'use-by'], ['賞味', 'best-before']]) {
+    const active = dueTypes.has(type);
+    button.querySelector('.stock-tab-dot--' + dot).hidden = !active;
+    if (active) labels.push(type + '期限が近い商品あり');
+  }
+  if (labels.length > 1) button.setAttribute('aria-label', labels.join('、'));
+  else button.removeAttribute('aria-label');
+}
+
+function refreshStockTabDots_() {
+  try {
+    updateStockTabDots_(getActiveItems());
+  } catch (error) {
+    reportStorageError_(error);
+  }
+}
+
+let stockTabRefreshTimer;
+function scheduleStockTabRefresh_() {
+  clearTimeout(stockTabRefreshTimer);
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  stockTabRefreshTimer = setTimeout(() => {
+    refreshStockTabDots_();
+    scheduleStockTabRefresh_();
+  }, Math.max(1, midnight.getTime() - Date.now()));
+}
+
 function loadCandidates_() {
   Promise.resolve().then(() => getOutOfStockList()).then(list => {
     const dl = document.getElementById('productCandidates');
@@ -40,6 +102,13 @@ function setDefaultDates_() {
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('productForm').addEventListener('submit', event => event.preventDefault());
+  document.getElementById('storage').innerHTML = storageChoices_('stock-storage');
+  scheduleStockTabRefresh_();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    refreshStockTabDots_();
+    scheduleStockTabRefresh_();
+  });
   // 初期値
   setDefaultDates_();
 
@@ -59,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!item) return;
 
     document.getElementById('category').value = item.category || '';
-    document.getElementById('storage').value = item.storage || '';
+    selectInputStorage_(item.storage);
     document.getElementById('emoji').value = item.emoji || '';
 
     renderEmojiPalette(item.category);
@@ -91,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       productName: document.getElementById('productName').value,
       purchaseDate: document.getElementById('purchaseDate').value,
       category: document.getElementById('category').value,
-      storage: document.getElementById('storage').value,
+      storage: document.querySelector('#storage input:checked')?.value || '',
       emoji: document.getElementById('emoji').value,
       expiryType: document.getElementById('expiryType').value,
       expiryDate: document.getElementById('expiryDate').value,
@@ -150,6 +219,7 @@ function loadStockList_() {
         console.error('items is not array:', items);
         items = [];
       }
+      updateStockTabDots_(items);
       items = sortStockItems_(items);
 
       const area = document.getElementById('stockList');
@@ -191,14 +261,7 @@ function loadStockList_() {
                   value="${item.expiryDate ? item.expiryDate : ''}">
               </label>
 
-              <label>
-                保管場所
-                <select class="edit-storage">
-                  <option value="冷蔵" ${item.storage === '冷蔵' ? 'selected' : ''}>🧃冷蔵</option>
-                  <option value="冷凍" ${item.storage === '冷凍' ? 'selected' : ''}>🧊冷凍</option>
-                  <option value="常温" ${item.storage === '常温' ? 'selected' : ''}>🌡️常温</option>
-                </select>
-              </label>
+              ${storageChoices_('edit-stock-storage', item.storage)}
 
               <label>
                 メモ
@@ -242,7 +305,7 @@ function loadStockList_() {
               purchaseDate: div.querySelector('.edit-purchaseDate').value,
               expiryType: div.querySelector('.edit-expiryType').value,
               expiryDate: div.querySelector('.edit-expiryDate').value,
-              storage: div.querySelector('.edit-storage').value,
+              storage: div.querySelector('.storage-choices input:checked')?.value ?? item.storage,
               note: div.querySelector('.edit-note').value,
               category: div.querySelector('.edit-category').value
             };
@@ -298,7 +361,7 @@ function loadStockList_() {
             // フォームにセット
             document.getElementById('productName').value = item.productName || '';
             document.getElementById('emoji').value = item.emoji || '';
-            document.getElementById('storage').value = item.storage || '';
+            selectInputStorage_(item.storage);
             document.getElementById('expiryType').value = item.expiryType || '賞味';
             document.getElementById('category').value = item.category || '';
             // 日付系はクリア（or 今日にしたければここでセット）
@@ -351,6 +414,7 @@ function updateStock_(id, status, itemDiv) {
       if (status === '×') {
         // 一覧から即消す
         itemDiv.remove();
+        refreshStockTabDots_();
         loadOutOfStockList_();
         loadCandidates_();
 
@@ -407,7 +471,7 @@ function loadOutOfStockList_() {
           // フォームに反映
           document.getElementById('productName').value = item.productName || '';
           document.getElementById('category').value = item.category || '';
-          document.getElementById('storage').value = item.storage || '';
+          selectInputStorage_(item.storage);
           document.getElementById('emoji').value = item.emoji || '';
           renderEmojiPalette(item.category || '');
 
