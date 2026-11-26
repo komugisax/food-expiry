@@ -452,6 +452,107 @@ input[type="date"] {
   background: #bbdefb;
 }
 
+
+/* JSON バックアップ・復元 */
+.backup-panel {
+  margin: 12px 0 16px;
+  border: 1px solid #c8e6c9;
+  border-radius: 12px;
+  background: #f4faf4;
+  color: #23452a;
+}
+
+.backup-panel > summary {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 11px;
+  list-style: none;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backup-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.backup-panel > summary::after {
+  content: "";
+  flex: 0 0 8px;
+  height: 8px;
+  margin-inline-end: 3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.backup-panel[open] > summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.backup-panel__body {
+  padding: 0 16px 14px;
+}
+
+.backup-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-panel__actions > button {
+  flex: 1 1 145px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid #2e7d32;
+  border-radius: 10px;
+  background: #fff;
+  color: #245e2a;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backup-panel #exportBackup {
+  background: #2e7d32;
+  color: #fff;
+}
+
+.backup-panel #exportBackup:hover {
+  background: #256428;
+}
+
+.backup-panel #importBackup:hover,
+.backup-panel > summary:hover {
+  background: #e8f5e9;
+}
+
+.backup-panel :is(summary, button):focus-visible {
+  outline: 2px solid #215826;
+  outline-offset: 2px;
+}
+
+.backup-panel__note {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: #3b5740;
+}
+
+#storageError {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid #efc1bd;
+  border-radius: 10px;
+  background: #fff3f2;
+  color: #842b24;
+  font-size: 15px;
+}
   </style>
 </head>
 <body>
@@ -472,11 +573,16 @@ input[type="date"] {
   <button type="button" class="tab-btn" data-tab="tab-out">在庫切れ</button>
 </div>
 
-<details>
+<details class="backup-panel">
   <summary>データのバックアップ・復元</summary>
-  <button type="button" id="exportBackup">JSONを書き出す</button>
-  <button type="button" id="importBackup">JSONを読み込む</button>
-  <input type="file" id="backupFile" accept=".json,application/json" hidden>
+  <div class="backup-panel__body">
+    <div class="backup-panel__actions">
+      <button type="button" id="exportBackup">JSONを書き出す</button>
+      <button type="button" id="importBackup">JSONを読み込む</button>
+    </div>
+    <p class="backup-panel__note">読み込むと、確認後に現在のデータを置き換えます。</p>
+    <input type="file" id="backupFile" accept=".json,application/json" hidden>
+  </div>
 </details>
 <p id="storageError" role="alert" hidden></p>
 
