@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; connect-src 'none'">
+<title>賞味期限管理 CSV変換</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; color: #20352a; background: #f3f8f3;
+    font: 1rem/1.6 system-ui, sans-serif; }
+  main { max-width: 42rem; margin: auto; padding: clamp(16px, 4vw, 32px);
+    border: 1px solid #d1e4d3; border-radius: 16px; background: white; }
+  h1 { margin: 0; font-size: 1.5rem; }
+  label { display: block; margin-top: 1rem; font-weight: 650; }
+  input { display: block; width: 100%; margin-top: .3rem; padding: .5rem;
+    border: 1px solid #afc5b1; border-radius: 8px; font: inherit; }
+  button { min-height: 48px; padding: .6rem 1rem; margin-top: 1rem; border: 0;
+    border-radius: 8px; color: white; background: #286438; font: inherit; font-weight: 700; }
+  button:disabled { background: #57735d; }
+  :focus-visible { outline: 2px solid #225c32; outline-offset: 3px; }
+  #result, #error { margin-top: 1rem; padding: .75rem; border-radius: 8px; }
+  #result { background: #e7f4e8; color: #234b2b; }
+  #error { background: #fff0ed; color: #8c2824; white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>賞味期限管理 CSV変換</h1>
+  <p>Googleスプレッドシートの各タブをCSVで保存し、下から選びます。</p>
+  <label>Items（現在の在庫・必須）
+    <input type="file" id="items" accept=".csv,text/csv" required>
+  </label>
+  <label>Archive（購入履歴・任意）
+    <input type="file" id="archive" accept=".csv,text/csv">
+  </label>
+  <label>EmojiMaster（絵文字設定・任意）
+    <input type="file" id="emojiMaster" accept=".csv,text/csv">
+  </label>
+  <button type="button" id="check">CSVを確認する</button>
+  <div id="error" role="alert" hidden></div>
+  <div id="result" role="status" hidden></div>
+  <button type="button" id="download" hidden>JSONを保存する</button>
+</main>
+<script>
+'use strict';
+
+const SHEETS = [
+  {
+    key: 'items', label: 'Items',
+    fields: 'id purchaseDate category productName emoji expiryType expiryDate storage stockStatus note createdAt updatedAt'.split(' '),
+    dates: ['purchaseDate', 'expiryDate'], timestamps: ['createdAt', 'updatedAt'],
+    id: 'id'
+  },
+  {
+    key: 'archive', label: 'Archive',
+    fields: 'archive_id archived_at item_id buy_date category product_name emoji expiry_type expiry_date storage stock_state memo product_key'.split(' '),
+    dates: ['buy_date', 'expiry_date'], timestamps: ['archived_at'],
+    id: 'archive_id'
+  },
+  { key: 'emojiMaster', label: 'EmojiMaster', fields: ['category', 'emoji', 'label'] }
+];
+
+function parseCsv(text) {
+  const source = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const field = /(?:"((?:[^"]|"")*)"|([^",\n]*))(,|\n|$)/y;
+  const rows = [];
+  let record = [];
+  let position = 0;
+  let line = 1;
+  let startLine = 1;
+  let trailingComma = false;
+
+  while (position < source.length || trailingComma) {
+    field.lastIndex = position;
+    const match = field.exec(source);
+    if (!match) throw new Error(line + '行付近の引用符を確認してください。');
+
+    const [, quoted, unquoted, separator] = match;
+    record.push(quoted === undefined ? unquoted : quoted.replace(/""/g, '"'));
+    position = field.lastIndex;
+    line += match[0].split('\n').length - 1;
+    trailingComma = separator === ',';
+    if (!trailingComma) {
+      if (record.some(value => value.trim())) rows.push({ values: record, line: startLine });
+      record = [];
+      startLine = line;
+    }
+  }
+  return rows;
+}
+
+function normalizeDate(value, field) {
+  if (!value.trim()) return '';
+  const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(value.trim());
+  if (!match) throw new Error(field + ' は「年/月/日」の順で指定してください。');
+
+  const [, year, month, day] = match;
+  const date = year + '-' + month.padStart(2, '0') + '-' + day.padStart(2, '0');
+  const parsed = new Date(date);
+  if (!Number.isFinite(+parsed) || parsed.toISOString().slice(0, 10) !== date) {
+    throw new Error(field + ' の日付が無効です。');
+  }
+  return date;
+}
+
+function normalizeTimestamp(value, field) {
+  if (!value.trim()) return '';
+  const match = /^(\d{4}[-/]\d{1,2}[-/]\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(value.trim());
+  if (!match) throw new Error(field + ' の日時の形式を確認してください。');
+
+  const [, date, hour = '00', minute = '00', second = '00', fraction = '', zone = '+09:00'] = match;
+  if (+hour > 23 || +minute > 59 || +second > 59) throw new Error(field + ' の時刻が無効です。');
+
+  const iso = normalizeDate(date, field) + 'T' + hour.padStart(2, '0') + ':' +
+    minute + ':' + second + fraction + zone;
+  const parsed = new Date(iso);
+  if (!Number.isFinite(+parsed)) throw new Error(field + ' のタイムゾーンを確認してください。');
+  return parsed.toISOString();
+}
+
+function convertSheet(text, sheet) {
+  let rows;
+  try {
+    rows = parseCsv(text);
+  } catch (error) {
+    throw new Error(sheet.label + '：' + error.message);
+  }
+
+  if (!rows.length) throw new Error(sheet.label + '：1行目に見出しが必要です。');
+  const [header, ...records] = rows;
+  const headings = header.values.map(value => value.trim());
+  const indices = sheet.key === 'emojiMaster'
+    ? [0, 1, 2] // 元のGASと同じく列順はカテゴリ、絵文字、ラベル
+    : sheet.fields.map(field => headings.indexOf(field));
+  const invalidHeaders = sheet.fields.filter((field, index) =>
+    indices[index] < 0 || (sheet.key !== 'emojiMaster' && headings.indexOf(field) !== headings.lastIndexOf(field)));
+  if (invalidHeaders.length) {
+    throw new Error(sheet.label + '：見出しの不足または重複があります。 ' + invalidHeaders.join('、'));
+  }
+
+  const ids = new Set();
+  const errors = [];
+  const converted = [];
+  for (const { values, line } of records) {
+    const row = Object.fromEntries(sheet.fields.map((field, index) => [field, values[indices[index]] ?? '']));
+    try {
+      for (const field of sheet.dates || []) row[field] = normalizeDate(row[field], field);
+      for (const field of sheet.timestamps || []) row[field] = normalizeTimestamp(row[field], field);
+      if (sheet.id) {
+        row[sheet.id] = row[sheet.id].trim();
+        if (!row[sheet.id] || ids.has(row[sheet.id])) {
+          throw new Error(sheet.id + ' が空欄または重複しています。');
+        }
+      }
+      if (sheet.key === 'items') {
+        const status = row.stockStatus.trim();
+        row.stockStatus = ['○', '〇'].includes(status) ? '◯' : status;
+        if (!['◯', '△'].includes(row.stockStatus)) throw new Error('stockStatus は「◯」または「△」にしてください。');
+      }
+      if (sheet.key === 'emojiMaster' && !row.category.trim()) {
+        throw new Error('カテゴリを入力してください。');
+      }
+      if (sheet.id) ids.add(row[sheet.id]);
+      converted.push(row);
+    } catch (error) {
+      errors.push(sheet.label + ' ' + line + '行目：' + error.message);
+    }
+  }
+
+  if (errors.length) {
+    const displayed = errors.slice(0, 8);
+    if (errors.length > displayed.length) displayed.push('ほか ' + (errors.length - displayed.length) + ' 件');
+    throw new Error(displayed.join('\n'));
+  }
+  return converted;
+}
+
+const check = document.getElementById('check');
+const download = document.getElementById('download');
+const result = document.getElementById('result');
+const errorBox = document.getElementById('error');
+const inputs = SHEETS.map(sheet => document.getElementById(sheet.key));
+let backup = null;
+
+function resetResult() {
+  backup = null;
+  download.hidden = true;
+  result.hidden = true;
+  errorBox.hidden = true;
+}
+
+for (const input of inputs) input.addEventListener('change', resetResult);
+
+check.addEventListener('click', async () => {
+  resetResult();
+  if (!inputs[0].reportValidity()) return;
+
+  check.disabled = true;
+  for (const input of inputs) input.disabled = true;
+  try {
+    const data = { version: 1, items: [], archive: [], emojiMaster: [] };
+    for (const [index, sheet] of SHEETS.entries()) {
+      const file = inputs[index].files[0];
+      if (file) data[sheet.key] = convertSheet(await file.text(), sheet);
+    }
+    backup = data;
+    result.textContent = '在庫 ' + data.items.length + ' 件、購入履歴 ' + data.archive.length +
+      ' 件、絵文字設定 ' + data.emojiMaster.length + ' 件。';
+    result.hidden = false;
+    download.hidden = false;
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.hidden = false;
+  } finally {
+    check.disabled = false;
+    for (const input of inputs) input.disabled = false;
+  }
+});
+
+download.addEventListener('click', () => {
+  if (!backup) return;
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'food-expiry-migration.json';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+</script>
+</body>
+</html>
