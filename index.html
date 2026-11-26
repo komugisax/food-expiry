@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>賞味期限管理</title>
+  <link rel="apple-touch-icon" href="./icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+/* 全体の基本 */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  margin: 16px;
+  font-size: 17px;       /* ← これが肝 */
+  line-height: 1.5;
+}
+
+/* 入力欄 */
+input, select, textarea {
+  width: 100%;
+  max-width: 100%;
+  font-size: 17px;        /* ← iOS最小ズーム回避 */
+  padding: 14px;
+  margin-top: 6px;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+}
+
+/* 登録ボタン（メイン） */
+.primary-btn {
+  width: 100%;
+  height: 60px;           /* 指で押しやすい */
+  font-size: 20px;
+  font-weight: bold;
+  background-color: #4caf50;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+/* 押したとき */
+.primary-btn:active {
+  background-color: #43a047;
+}
+
+/* 編集画面のボタン行 */
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* 編集 保存ボタン */
+.save-btn {
+  flex: 2;
+  height: 52px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* 編集 キャンセルボタン */
+.cancel-btn {
+  flex: 1;
+  height: 52px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: none;
+  background: #eeeeee;
+  color: #333;
+}
+
+.cancel-btn:active {
+  background: #e0e0e0;
+}
+
+/* 結果メッセージ */
+#result {
+  margin-top: 12px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.stock-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.stock-name {
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.stock-buttons button {
+  margin-left: 6px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  border-radius: 50%;
+  border: none;
+}
+
+.btn-circle { background: #4caf50; color: #fff; }
+.btn-triangle { background: #ffb300; color: #fff; }
+.btn-cross { background: #e53935; color: #fff; }
+
+.stock-buttons button {
+  margin-left: 6px;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  border-radius: 50%;
+  border: none;
+  opacity: 0.3;          /* デフォルトは薄く */
+}
+
+.stock-buttons button.active {
+  opacity: 1;            /* 今の状態だけ濃く */
+}
+
+.btn-circle { background: #4caf50; color: #fff; }
+.btn-triangle { background: #ffb300; color: #fff; }
+.btn-cross { background: #e53935; color: #fff; }
+
+.stock-item.warning {
+  background: #fff8e1;
+}
+
+.expiry-text {
+  font-size: 13px;
+  color: #666;
+}
+/* ===== 期限ステータス色 ===== */
+.stock-item.overdue {
+  background: #ffebee;        /* 赤っぽい */
+}
+
+.stock-item.today {
+  background: #fff3e0;        /* オレンジ */
+}
+
+.stock-item.soon {
+  background: #fffde7;        /* 黄色 */
+}
+
+.expiry-text.overdue {
+  color: #c62828;
+  font-weight: bold;
+}
+
+.expiry-text.today {
+  color: #ef6c00;
+  font-weight: bold;
+}
+
+.expiry-text.soon {
+  color: #9e9d24;
+}
+
+/* 絵文字パレット */
+.emoji-palette {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 6 → 5 */
+  gap: 8px;
+}
+
+.emoji-palette button {
+  font-size: 26px;
+  padding: 14px 0;
+}
+
+
+.emoji-palette button:active {
+  background: #e0e0e0;
+}
+
+/* 在庫切れリスト */
+.oos-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.oos-left {
+  line-height: 1.3;
+}
+
+.oos-name {
+  font-size: 16px;
+}
+
+.oos-meta {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.oos-badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eee;
+  margin-left: 6px;
+}
+
+.oos-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  background: #e8f5e9;
+}
+.oos-btn:active {
+  background: #c8e6c9;
+}
+
+/* ===== スマホ最適化 ===== */
+@media (max-width: 680px) {
+
+  h2 {
+    font-size: 22px;
+  }
+
+  h3 {
+    font-size: 18px;
+    margin-top: 24px;
+  }
+
+  /* 在庫1行を縦積みに */
+  .stock-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .stock-name {
+    font-size: 17px;
+  }
+
+  .expiry-text {
+    font-size: 14px;
+  }
+
+  /* ボタンを横いっぱい＋大きく */
+  .stock-buttons {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .stock-buttons button {
+    width: 30%;
+    height: 48px;        /* ← 指サイズ */
+    font-size: 20px;
+    border-radius: 12px;
+  }
+
+  /* 在庫切れリスト */
+  .oos-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .oos-name {
+    font-size: 17px;
+  }
+
+  .oos-btn {
+    width: 100%;
+    height: 48px;
+    font-size: 16px;
+  }
+}
+
+/* ===== 見出し ===== */
+h2 {
+  font-size: 22px;
+  margin: 8px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #4caf50;
+}
+
+h3 {
+  font-size: 18px;
+  margin: 24px 0 12px;
+  padding-left: 8px;
+  border-left: 4px solid #4caf50;
+}
+
+/* ===== date入力のはみ出し対策 ===== */
+input[type="date"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* iOS用 date input はみ出し対策 */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* date inputだけ微調整 */
+input[type="date"] {
+  padding-right: 8px;
+}
+
+/* タブ */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 16px;
+  border-radius: 10px;
+  border: none;
+  background: #e0e0e0;
+}
+
+.tab-btn.active {
+  background: #4caf50;
+  color: #fff;
+  font-weight: bold;
+}
+
+/* 中身 */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ===== 起動中画面 ===== */
+#loadingScreen {
+  position: fixed;
+  inset: 0;
+  background: #e8f5f3; /* ミント系 */
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-box {
+  text-align: center;
+}
+
+.loading-text {
+  margin-top: 12px;
+  font-size: 16px;
+  color: #333;
+}
+
+/* くるくる */
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #b2dfdb;
+  border-top-color: #26a69a;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.edit-btn {
+  margin-left: 8px;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: #e0f2f1;
+  color: #00695c;
+}
+.edit-btn:active {
+  background: #b2dfdb;
+}
+
+/* トースト通知 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: rgba(50, 50, 50, 0.9);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 10000;
+}
+
+/* 表示中 */
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px);
+}
+
+.reload-btn {
+  margin-left: 8px;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: #eeeeee;
+}
+.reload-btn:active {
+  background: #dddddd;
+}
+
+/* 複製ボタン */
+.clone-btn {
+  margin-left: 10px;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.clone-btn:active {
+  background: #bbdefb;
+}
+
+  </style>
+</head>
+<body>
+
+<!-- 起動中画面 -->
+<div id="loadingScreen">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">起動中…</div>
+  </div>
+</div>
+
+<h2>賞味期限管理　<button type="button" class="reload-btn" onclick="softReload_()">↻</button></h2>
+
+<div class="tabs">
+  <button type="button" class="tab-btn active" data-tab="tab-input">入力</button>
+  <button type="button" class="tab-btn" data-tab="tab-stock">在庫</button>
+  <button type="button" class="tab-btn" data-tab="tab-out">在庫切れ</button>
+</div>
+
+<details>
+  <summary>データのバックアップ・復元</summary>
+  <button type="button" id="exportBackup">JSONを書き出す</button>
+  <button type="button" id="importBackup">JSONを読み込む</button>
+  <input type="file" id="backupFile" accept=".json,application/json" hidden>
+</details>
+<p id="storageError" role="alert" hidden></p>
+
+<form id="productForm">
+<div id="tab-input" class="tab-content active">
+  <h3>商品登録</h3>
+
+  <div>
+    <label>商品名：<input id="productName" list="productCandidates">
+    <datalist id="productCandidates"></datalist>
+  </div>
+
+  <div>
+    <label>カテゴリ：
+      <select id="category">
+      </select>
+    </label>
+  </div>
+
+  <div>
+    <label>絵文字：<input id="emoji"></label>
+    <!-- 絵文字パレット -->
+    <div id="emojiPalette" class="emoji-palette"></div>
+  </div>
+
+  <div>
+    <label>期限種別：
+      <select id="expiryType">
+        <option value="賞味">賞味</option>
+        <option value="消費">消費</option>
+      </select>
+    </label>
+  </div>
+
+  <div>
+    <label>期限日⏳：<input type="date" id="expiryDate"></label>
+  </div>
+
+  <div>
+    <label>保管場所：
+      <select id="storage">
+        <option value="">選択してください</option>
+        <option value="冷蔵">🧃冷蔵</option>
+        <option value="冷凍">🧊冷凍</option>
+        <option value="常温">🌡️常温</option>
+      </select>
+    </label>
+
+  </div>
+
+
+
+  <div>
+    <label>購入日🛒：<input type="date" id="purchaseDate"></label>
+  </div>
+
+  <div>
+    <label>メモ：<input id="note"></label>
+  </div>
+
+  <button type="button" id="saveBtn" class="primary-btn">登録</button>
+
+
+  <p id="result" style="color:#2e7d32;"></p>
+</div>
+
+<div id="tab-stock" class="tab-content">
+  <h3>在庫一覧</h3>
+  <div id="stockList"></div>
+</div>
+
+
+
+<div id="tab-out" class="tab-content">
+  <h3>在庫切れリスト（よく買う順）</h3>
+  <div id="outOfStockList"></div>
+</div>
+
+</form>
+
+
+
+<script src="./storage.js"></script>
+<script src="./app.js"></script>
+
+<div id="toast" class="toast"></div>
+
+</body>
+</html>
