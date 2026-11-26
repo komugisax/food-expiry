@@ -49,13 +49,13 @@ const SHEETS = [
   {
     key: 'items', label: 'Items',
     fields: 'id purchaseDate category productName emoji expiryType expiryDate storage stockStatus note createdAt updatedAt'.split(' '),
-    purchaseDate: 'purchaseDate', dates: ['expiryDate'], timestamps: ['createdAt', 'updatedAt'],
+    dates: ['purchaseDate', 'expiryDate'], timestamps: ['createdAt', 'updatedAt'],
     id: 'id'
   },
   {
     key: 'archive', label: 'Archive',
     fields: 'archive_id archived_at item_id buy_date category product_name emoji expiry_type expiry_date storage stock_state memo product_key'.split(' '),
-    purchaseDate: 'buy_date', dates: ['expiry_date'], timestamps: ['archived_at'],
+    dates: ['buy_date', 'expiry_date'], timestamps: ['archived_at'],
     id: 'archive_id'
   },
   { key: 'emojiMaster', label: 'EmojiMaster', fields: ['category', 'emoji', 'label'] }
@@ -146,11 +146,7 @@ function convertSheet(text, sheet) {
   for (const { values, line } of records) {
     const row = Object.fromEntries(sheet.fields.map((field, index) => [field, values[indices[index]] ?? '']));
     try {
-      for (const field of sheet.dates || []) row[field] = normalizeDate(row[field], field);
-      if (sheet.purchaseDate) {
-        const field = sheet.purchaseDate;
-        row[field] = normalizeDateTime(row[field], field, true);
-      }
+      for (const field of sheet.dates || []) row[field] = normalizeDateTime(row[field], field, true);
       for (const field of sheet.timestamps || []) row[field] = normalizeDateTime(row[field], field);
       if (sheet.id) {
         row[sheet.id] = row[sheet.id].trim();
