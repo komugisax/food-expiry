@@ -533,7 +533,7 @@ input[type="date"] {
   background: #e8f5e9;
 }
 
-.backup-panel :is(summary, button):focus-visible {
+.backup-panel :is(summary, button, a):focus-visible {
   outline: 2px solid #215826;
   outline-offset: 2px;
 }
@@ -542,6 +542,18 @@ input[type="date"] {
   margin: 10px 0 0;
   font-size: 14px;
   color: #3b5740;
+}
+
+.backup-panel__migration {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 4px;
+  border-radius: 4px;
+  color: #245e2a;
+  font-size: 15px;
+  font-weight: 650;
+  text-underline-offset: 3px;
 }
 
 #storageError {
@@ -581,6 +593,7 @@ input[type="date"] {
       <button type="button" id="importBackup">JSONを読み込む</button>
     </div>
     <p class="backup-panel__note">読み込むと、確認後に現在のデータを置き換えます。</p>
+    <a class="backup-panel__migration" href="./csv-to-expiry-json.html">旧スプレッドシートから移行（CSV）</a>
     <input type="file" id="backupFile" accept=".json,application/json" hidden>
   </div>
 </details>

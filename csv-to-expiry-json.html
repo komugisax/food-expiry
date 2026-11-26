@@ -49,13 +49,13 @@ const SHEETS = [
   {
     key: 'items', label: 'Items',
     fields: 'id purchaseDate category productName emoji expiryType expiryDate storage stockStatus note createdAt updatedAt'.split(' '),
-    dates: ['purchaseDate', 'expiryDate'], timestamps: ['createdAt', 'updatedAt'],
+    purchaseDate: 'purchaseDate', dates: ['expiryDate'], timestamps: ['createdAt', 'updatedAt'],
     id: 'id'
   },
   {
     key: 'archive', label: 'Archive',
     fields: 'archive_id archived_at item_id buy_date category product_name emoji expiry_type expiry_date storage stock_state memo product_key'.split(' '),
-    dates: ['buy_date', 'expiry_date'], timestamps: ['archived_at'],
+    purchaseDate: 'buy_date', dates: ['expiry_date'], timestamps: ['archived_at'],
     id: 'archive_id'
   },
   { key: 'emojiMaster', label: 'EmojiMaster', fields: ['category', 'emoji', 'label'] }
@@ -104,7 +104,7 @@ function normalizeDate(value, field) {
   return date;
 }
 
-function normalizeTimestamp(value, field) {
+function normalizeDateTime(value, field, dateOnly = false) {
   if (!value.trim()) return '';
   const match = /^(\d{4}[-/]\d{1,2}[-/]\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(value.trim());
   if (!match) throw new Error(field + ' の日時の形式を確認してください。');
@@ -112,11 +112,12 @@ function normalizeTimestamp(value, field) {
   const [, date, hour = '00', minute = '00', second = '00', fraction = '', zone = '+09:00'] = match;
   if (+hour > 23 || +minute > 59 || +second > 59) throw new Error(field + ' の時刻が無効です。');
 
-  const iso = normalizeDate(date, field) + 'T' + hour.padStart(2, '0') + ':' +
+  const calendarDay = normalizeDate(date, field);
+  const iso = calendarDay + 'T' + hour.padStart(2, '0') + ':' +
     minute + ':' + second + fraction + zone;
   const parsed = new Date(iso);
   if (!Number.isFinite(+parsed)) throw new Error(field + ' のタイムゾーンを確認してください。');
-  return parsed.toISOString();
+  return dateOnly ? calendarDay : parsed.toISOString();
 }
 
 function convertSheet(text, sheet) {
@@ -146,7 +147,11 @@ function convertSheet(text, sheet) {
     const row = Object.fromEntries(sheet.fields.map((field, index) => [field, values[indices[index]] ?? '']));
     try {
       for (const field of sheet.dates || []) row[field] = normalizeDate(row[field], field);
-      for (const field of sheet.timestamps || []) row[field] = normalizeTimestamp(row[field], field);
+      if (sheet.purchaseDate) {
+        const field = sheet.purchaseDate;
+        row[field] = normalizeDateTime(row[field], field, true);
+      }
+      for (const field of sheet.timestamps || []) row[field] = normalizeDateTime(row[field], field);
       if (sheet.id) {
         row[sheet.id] = row[sheet.id].trim();
         if (!row[sheet.id] || ids.has(row[sheet.id])) {
